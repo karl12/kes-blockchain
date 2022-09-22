@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package node.v1;
+
+option go_package = "gen/node/v1";
+
+service Node {
+  rpc DiscoverPeers (Empty) returns (PeersReply);
+}
+
+message PeersReply {
+  repeated string message = 1;
+}
+
+message Empty {
+
+}
