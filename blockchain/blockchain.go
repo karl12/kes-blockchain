@@ -32,8 +32,8 @@ func dataString(data []Transaction) string {
 }
 
 type blockchain struct {
-	firstBlock Block
-	lastBlock  Block
+	firstBlock *Block
+	lastBlock  *Block
 	length     uint64
 	difficulty int
 }
@@ -41,10 +41,10 @@ type blockchain struct {
 const MaxUint = ^uint64(0)
 
 var (
-	bc = blockchain{createGenesis(), createGenesis(), 1, 4}
+	bc = blockchain{createGenesis(), createGenesis(), 1, 8}
 )
 
-func createGenesis() Block {
+func createGenesis() *Block {
 	inceptionTime := int64(0)
 	var data []Transaction
 	data = append(data, Transaction{Sender: "", Receiver: "karl", Amount: 100000000})
@@ -53,7 +53,7 @@ func createGenesis() Block {
 	hash := GenerateHash(previousHash, "", inceptionTime, nonce)
 
 	block := Block{hash, previousHash, data, inceptionTime, nonce, nil, nil}
-	return block
+	return &block
 }
 
 func GenerateHash(previousHash string, data string, timestamp int64, nonce uint64) string {
@@ -72,9 +72,9 @@ func Mine(data []Transaction) {
 
 			potentialHash := GenerateHash(GetLastBlock().Hash, dataString(data), startTimestamp, nonce)
 			if validateHash(potentialHash) {
-				nextBlock := Block{potentialHash, GetLastBlock().Hash, data, startTimestamp, nonce, nil, &bc.lastBlock}
+				nextBlock := Block{potentialHash, GetLastBlock().Hash, data, startTimestamp, nonce, nil, bc.lastBlock}
 				bc.lastBlock.Next = &nextBlock
-				bc.lastBlock = nextBlock
+				bc.lastBlock = &nextBlock
 				bc.length++
 				return
 			}
@@ -90,10 +90,10 @@ func GetBlockChainLength() uint64 {
 	return bc.length
 }
 
-func GetLastBlock() Block {
+func GetLastBlock() *Block {
 	return bc.lastBlock
 }
-func GetFirstBlock() Block {
+func GetFirstBlock() *Block {
 	return bc.firstBlock
 }
 
