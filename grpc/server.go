@@ -24,106 +24,31 @@ type server struct {
 }
 
 func (s *server) JoinNetwork(ctx context.Context, in *pb.DiscoverRequest) (*pb.PeersReply, error) {
-	addresses := createAddressSlice()
+	addresses := createNetworkAddressSlice()
 	peers[in.Address] = true
 	return &pb.PeersReply{Address: addresses}, nil
 }
 
 func (s *server) NodeList(ctx context.Context, in *pb.Empty) (*pb.PeersReply, error) {
-	addresses := createAddressSlice()
+	addresses := createNetworkAddressSlice()
 	return &pb.PeersReply{Address: addresses}, nil
 }
 
 func (s *server) MineBlock(ctx context.Context, in *pb.Empty) (*pb.BlockReply, error) {
 	blockchain = blockchain.MineNext(nil)
-	tooMany := blockToMessage(blockchain.Blocks)
+	tooMany := BlockToMessage(blockchain.Blocks)
 	return &pb.BlockReply{Block: tooMany[len(tooMany)-1]}, nil
 }
 
 func (s *server) Blockchain(ctx context.Context, in *pb.Empty) (*pb.BlockchainReply, error) {
 	return &pb.BlockchainReply{
 		Blockchain: &pb.Blockchain{
-			Blocks: blockToMessage(blockchain.Blocks),
+			Blocks: BlockToMessage(blockchain.Blocks),
 		},
 	}, nil
 }
 
-func blockToMessage(blocks []bc.Block) []*pb.Block {
-	if &blocks == nil {
-		return nil
-	}
-
-	var ret []*pb.Block
-
-	for _, block := range blocks {
-		transactions := transactionsToMessage(&block)
-
-		message := pb.Block{
-			Hash:         block.Hash,
-			PreviousHash: block.PreviousHash,
-			Timestamp:    block.Timestamp,
-			Nonce:        block.Nonce,
-			Data:         transactions,
-		}
-
-		ret = append(ret, &message)
-	}
-
-	return ret
-}
-
-func transactionsToMessage(block *bc.Block) []*pb.Transaction {
-	var transactions []*pb.Transaction
-
-	for _, t := range block.Data {
-		transactions = append(transactions, &pb.Transaction{
-			Sender:   t.Sender,
-			Receiver: t.Receiver,
-			Amount:   t.Amount,
-		})
-	}
-	return transactions
-}
-
-func messageToBlock(blocks []*pb.Block) []bc.Block {
-	if &blocks == nil {
-		return nil
-	}
-
-	var ret []bc.Block
-
-	for _, block := range blocks {
-
-		transactions := messageToTransaction(block)
-
-		message := bc.Block{
-			Hash:         block.Hash,
-			PreviousHash: block.PreviousHash,
-			Timestamp:    block.Timestamp,
-			Nonce:        block.Nonce,
-			Data:         transactions,
-		}
-
-		ret = append(ret, message)
-	}
-
-	return ret
-}
-
-func messageToTransaction(block *pb.Block) []bc.Transaction {
-	var transactions []bc.Transaction
-
-	for _, t := range block.Data {
-		transactions = append(transactions, bc.Transaction{
-			Sender:   t.Sender,
-			Receiver: t.Receiver,
-			Amount:   t.Amount,
-		})
-	}
-	return transactions
-}
-
-func createAddressSlice() []string {
+func createNetworkAddressSlice() []string {
 	var addresses []string
 	for address, _ := range peers {
 		addresses = append(addresses, address)
@@ -132,75 +57,66 @@ func createAddressSlice() []string {
 }
 
 func sync() {
-	addresses := createAddressSlice()
+	addresses := createNetworkAddressSlice()
+	syncFunctions := []func(client pb.NodeClient) error{
+		getPeersFromTarget,
+		syncBlockchain,
+	}
+
 	for _, address := range addresses {
 		if address != ownAddress {
-			for _, newAddress := range getPeersFromTarget(address) {
-				peers[newAddress] = true
-			}
+			execute[[]string](address, syncFunctions)
 		}
 	}
-
 	log.Printf("Peers in network: %d", len(peers))
-
-	for _, address := range addresses {
-		foreignBlock := getBlockChain(address)
-		if &foreignBlock != nil && blockchain.ShouldReplace(foreignBlock) {
-			blockchain = foreignBlock
-			log.Printf("Block replaced from %s", address)
-		}
-	}
-
 }
 
-func getBlockChain(target string) bc.Blockchain {
-	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		delete(peers, target)
-		return bc.Blockchain{}
-	}
-	defer conn.Close()
-	client := pb.NewNodeClient(conn)
-
+func syncBlockchain(client pb.NodeClient) error {
 	ret, err := client.Blockchain(
 		context.Background(),
 		&pb.Empty{})
 
-	if err != nil {
-		log.Printf("Bad peer: error %s", err)
-		delete(peers, target)
-		return bc.Blockchain{}
+	if &err != nil {
+		return err
 	}
 
-	return messageToBlockchain(ret.Blockchain)
+	foreignBlock := messageToBlockchain(ret.Blockchain)
+
+	if &foreignBlock != nil && blockchain.ShouldReplace(foreignBlock) {
+		blockchain = foreignBlock
+		log.Printf("Block replaced")
+	}
+
+	return nil
 }
 
-func messageToBlockchain(b *pb.Blockchain) bc.Blockchain {
-	return bc.Blockchain{
-		Blocks: messageToBlock(b.Blocks),
-	}
-}
-
-func getPeersFromTarget(target string) []string {
-	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		delete(peers, target)
-		return []string{}
-	}
-	defer conn.Close()
-	client := pb.NewNodeClient(conn)
-
+func getPeersFromTarget(client pb.NodeClient) error {
 	ret, err := client.JoinNetwork(
 		context.Background(),
 		&pb.DiscoverRequest{Address: ownAddress})
 
-	if err != nil {
-		log.Printf("Bad peer: error %s", err)
-		delete(peers, target)
-		return []string{}
+	for _, newAddress := range ret.Address {
+		peers[newAddress] = true
 	}
+	return err
+}
 
-	return ret.Address
+func execute(target string, functions []func(client pb.NodeClient) error) {
+	conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	defer conn.Close()
+
+	if &err != nil {
+		client := pb.NewNodeClient(conn)
+
+		for _, f := range functions {
+			err := f(client)
+			if &err != nil {
+				log.Printf("Bad node %s", target)
+				delete(peers, target)
+				return
+			}
+		}
+	}
 }
 
 func main() {

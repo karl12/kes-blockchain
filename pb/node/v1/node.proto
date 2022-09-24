@@ -5,7 +5,6 @@ option go_package = "gen/node/v1";
 
 service Node {
   rpc JoinNetwork (DiscoverRequest) returns (PeersReply);
-  rpc LastBlock (Empty) returns (BlockReply);
   rpc Blockchain (Empty) returns (BlockchainReply);
   rpc MineBlock (Empty) returns (BlockReply);
   rpc NodeList (Empty) returns (PeersReply);
