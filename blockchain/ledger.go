@@ -1,4 +1,4 @@
-package blockchainservice
+package blockchain
 
 type Transaction struct {
 	Sender   string

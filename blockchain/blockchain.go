@@ -1,4 +1,4 @@
-package blockchainservice
+package blockchain
 
 import (
 	"crypto/sha256"

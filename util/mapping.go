@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	bc "kes-blockchain/blockchain"
@@ -80,7 +80,7 @@ func MessageToTransaction(block *pb.Block) []bc.Transaction {
 	return transactions
 }
 
-func messageToBlockchain(b *pb.Blockchain) bc.Blockchain {
+func MessageToBlockchain(b *pb.Blockchain) bc.Blockchain {
 	return bc.Blockchain{
 		Blocks: MessageToBlock(b.Blocks),
 	}
